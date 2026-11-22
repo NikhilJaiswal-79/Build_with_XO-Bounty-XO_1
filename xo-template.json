@@ -1,0 +1,1599 @@
+{
+  "$schema": "https://libauth.org/schemas/wallet-template-v0.schema.json",
+  "name": "Final Tokenized Milestone Escrow",
+  "description": "Stateful milestone escrow with transferable CashToken role badges, a 2-byte on-chain phase, cooperative release, arbiter resolution, and a time-locked refund. The P2SH32 covenant commits the payout scripts and refund deadline at lock time.",
+  "icon": "vault",
+  "version": "1",
+  "supported": [
+    "BCH_2023_05",
+    "BCH_2024_05",
+    "BCH_2025_05",
+    "BCH_2026_05"
+  ],
+  "roles": {
+    "client": {
+      "name": "Client",
+      "description": "Funds the milestone, holds the client badge, releases or refunds.",
+      "icon": "signer"
+    },
+    "developer": {
+      "name": "Developer",
+      "description": "Delivers the milestone and holds the developer badge.",
+      "icon": "developer"
+    },
+    "arbiter": {
+      "name": "Arbiter",
+      "description": "Resolves after submission and holds the arbiter badge.",
+      "icon": "arbiter"
+    }
+  },
+  "start": [
+    {
+      "action": "mint",
+      "role": "client",
+      "generate": [
+        "clientKey",
+        "clientBadgeKey",
+        "developerKey",
+        "arbiterKey"
+      ]
+    }
+  ],
+  "actions": {
+    "mint": {
+      "name": "Mint Role Token Category",
+      "description": "Create the one-time minting NFT. Its category becomes the shared category of the state NFT and all role badges.",
+      "icon": "mint",
+      "roles": {
+        "client": {
+          "name": "Mint",
+          "description": "Generate all role keys and create the minting NFT.",
+          "icon": "signer",
+          "generate": [
+            "clientKey",
+            "clientBadgeKey",
+            "developerKey",
+            "arbiterKey"
+          ]
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "mintTransaction"
+    },
+    "lock": {
+      "name": "Lock Milestone",
+      "description": "Burn the minting NFT and create the mutable state NFT, three immutable role badges, and the milestone hash receipt.",
+      "icon": "lock",
+      "roles": {
+        "client": {
+          "name": "Lock",
+          "description": "Sign with the client key and lock the milestone.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "clientKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "refundDeadline",
+          "milestoneHash"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCATEGORY OP_SIZE OP_NIP <32> OP_GREATERTHAN)",
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x00> OP_EQUAL)"
+      ],
+      "transaction": "lockTransaction"
+    },
+    "submit": {
+      "name": "Submit Milestone",
+      "description": "Developer badge advances FUNDED (0x00) to SUBMITTED (0x01). The escrow output and developer badge are recreated.",
+      "icon": "send",
+      "roles": {
+        "developer": {
+          "name": "Submit",
+          "description": "Sign with the developer badge.",
+          "icon": "developer",
+          "requirements": {
+            "secrets": [
+              "developerKey"
+            ]
+          }
+        },
+        "client": {
+          "name": "Submit (single wallet)",
+          "description": "Sign with the developer badge key held by this wallet.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "developerKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "currentStateCommitment",
+          "refundDeadline"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x02> OP_EQUAL)"
+      ],
+      "transaction": "submitTransaction"
+    },
+    "release": {
+      "name": "Release to Developer",
+      "description": "Client badge advances SUBMITTED to RELEASED. The locked amount pays the committed developer P2PKH and the client receives the immutable receipt NFT.",
+      "icon": "send",
+      "roles": {
+        "client": {
+          "name": "Release",
+          "description": "Sign with the client badge.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "clientBadgeKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "currentStateCommitment",
+          "refundDeadline"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x01> OP_EQUAL)"
+      ],
+      "transaction": "releaseTransaction"
+    },
+    "partialRelease": {
+      "name": "Partial Release to Developer",
+      "description": "Client badge pays part of the current escrow to the developer and keeps the rest in the same escrow, still SUBMITTED. Enter currentEscrowSatoshis, payoutNow, and remainingSatoshis so that payoutNow + remainingSatoshis = currentEscrowSatoshis.",
+      "icon": "send",
+      "roles": {
+        "client": {
+          "name": "Partial Release",
+          "description": "Sign with the client badge.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "clientBadgeKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "currentStateCommitment",
+          "refundDeadline",
+          "currentEscrowSatoshis",
+          "payoutNow",
+          "remainingSatoshis"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x01> OP_EQUAL)"
+      ],
+      "transaction": "partialReleaseTransaction"
+    },
+    "resolveToDeveloper": {
+      "name": "Arbiter Pays Developer",
+      "description": "Arbiter badge unilaterally advances SUBMITTED to RELEASED and pays the committed developer P2PKH.",
+      "icon": "arbiter",
+      "roles": {
+        "arbiter": {
+          "name": "Resolve",
+          "description": "Sign with the arbiter badge.",
+          "icon": "arbiter",
+          "requirements": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          }
+        },
+        "client": {
+          "name": "Resolve (single wallet)",
+          "description": "Sign with the arbiter badge key held by this wallet.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "currentStateCommitment",
+          "refundDeadline"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x03> OP_EQUAL)"
+      ],
+      "transaction": "resolveDeveloperTransaction"
+    },
+    "refund": {
+      "name": "Client Refund",
+      "description": "After the committed deadline, the client badge refunds the locked amount to the committed client P2PKH and creates the immutable REFUNDED receipt.",
+      "icon": "receive",
+      "roles": {
+        "client": {
+          "name": "Refund",
+          "description": "Sign with the client badge after the deadline.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "clientBadgeKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "currentStateCommitment",
+          "refundDeadline"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x01> OP_EQUAL)"
+      ],
+      "transaction": "refundTransaction"
+    },
+    "arbiterRefund": {
+      "name": "Arbiter Refund",
+      "description": "After the committed deadline, the arbiter badge can also refund to the committed client P2PKH.",
+      "icon": "arbiter",
+      "roles": {
+        "arbiter": {
+          "name": "Arbiter Refund",
+          "description": "Sign with the arbiter badge after the deadline.",
+          "icon": "arbiter",
+          "requirements": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          }
+        },
+        "client": {
+          "name": "Arbiter Refund (single wallet)",
+          "description": "Sign with the arbiter badge key held by this wallet.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "lockedSatoshis",
+          "currentStateCommitment",
+          "refundDeadline"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "conditions": [
+        "$(OP_INPUTINDEX OP_UTXOTOKENCOMMITMENT <0x03> OP_EQUAL)"
+      ],
+      "transaction": "arbiterRefundTransaction"
+    },
+    "transferClientBadge": {
+      "name": "Transfer Client Badge",
+      "description": "Transfer the immutable client role badge to a recipient script.",
+      "icon": "send",
+      "roles": {
+        "client": {
+          "name": "Transfer",
+          "description": "Sign with the current client badge key.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "clientBadgeKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "badgeCommitment",
+          "recipientLockingScript"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "transferClientBadgeTransaction"
+    },
+    "transferDeveloperBadge": {
+      "name": "Transfer Developer Badge",
+      "description": "Transfer the immutable developer role badge to a recipient script.",
+      "icon": "send",
+      "roles": {
+        "developer": {
+          "name": "Transfer",
+          "description": "Sign with the current developer badge key.",
+          "icon": "developer",
+          "requirements": {
+            "secrets": [
+              "developerKey"
+            ]
+          }
+        },
+        "client": {
+          "name": "Transfer (single wallet)",
+          "description": "Sign with the developer badge key held by this wallet.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "developerKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "badgeCommitment",
+          "recipientLockingScript"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "transferDeveloperBadgeTransaction"
+    },
+    "transferArbiterBadge": {
+      "name": "Transfer Arbiter Badge",
+      "description": "Transfer the immutable arbiter role badge to a recipient script.",
+      "icon": "send",
+      "roles": {
+        "arbiter": {
+          "name": "Transfer",
+          "description": "Sign with the current arbiter badge key.",
+          "icon": "arbiter",
+          "requirements": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          }
+        },
+        "client": {
+          "name": "Transfer (single wallet)",
+          "description": "Sign with the arbiter badge key held by this wallet.",
+          "icon": "signer",
+          "requirements": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "variables": [
+          "tokenCategory",
+          "badgeCommitment",
+          "recipientLockingScript"
+        ],
+        "participants": [
+          {
+            "role": "client",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "transferArbiterBadgeTransaction"
+    }
+  },
+  "transactions": {
+    "mintTransaction": {
+      "name": "Role Category Minted",
+      "description": "Created the one-time minting NFT for the escrow category.",
+      "icon": "mint",
+      "inputs": [],
+      "outputs": [
+        {
+          "output": "mintingOutput",
+          "outputIndex": 0
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "lockTransaction": {
+      "name": "Milestone Locked",
+      "description": "Burned the minting NFT and created the escrow state and badges.",
+      "icon": "lock",
+      "inputs": [
+        {
+          "input": "mintingInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "escrowLockedOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "clientBadgeOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "developerBadgeOutput",
+          "outputIndex": 2
+        },
+        {
+          "output": "arbiterBadgeOutput",
+          "outputIndex": 3
+        },
+        {
+          "output": "milestoneOutput",
+          "outputIndex": 4
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "submitTransaction": {
+      "name": "Milestone Submitted",
+      "description": "Developer badge changed the state to SUBMITTED.",
+      "icon": "send",
+      "inputs": [
+        {
+          "input": "escrowInput",
+          "inputIndex": 0
+        },
+        {
+          "input": "developerBadgeInput",
+          "inputIndex": 1
+        }
+      ],
+      "outputs": [
+        {
+          "output": "escrowSubmittedOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "developerBadgeOutput",
+          "outputIndex": 1
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "releaseTransaction": {
+      "name": "Milestone Released",
+      "description": "Client badge paid the developer and produced the receipt.",
+      "icon": "send",
+      "inputs": [
+        {
+          "input": "escrowInput",
+          "inputIndex": 0
+        },
+        {
+          "input": "clientBadgeInput",
+          "inputIndex": 1
+        }
+      ],
+      "outputs": [
+        {
+          "output": "developerPayoutOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "releaseReceiptOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "clientBadgeOutput",
+          "outputIndex": 2
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "partialReleaseTransaction": {
+      "name": "Milestone Partially Released",
+      "description": "Client badge paid part of the locked amount to the developer and recreated the escrow with the rest.",
+      "icon": "send",
+      "inputs": [
+        {
+          "input": "escrowPartialInput",
+          "inputIndex": 0
+        },
+        {
+          "input": "clientBadgeInput",
+          "inputIndex": 1
+        }
+      ],
+      "outputs": [
+        {
+          "output": "developerPartialPayoutOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "escrowRemainingOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "clientBadgeOutput",
+          "outputIndex": 2
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "resolveDeveloperTransaction": {
+      "name": "Arbiter Paid Developer",
+      "description": "Arbiter badge paid the developer and produced the receipt.",
+      "icon": "arbiter",
+      "inputs": [
+        {
+          "input": "escrowInput",
+          "inputIndex": 0
+        },
+        {
+          "input": "arbiterBadgeInput",
+          "inputIndex": 1
+        }
+      ],
+      "outputs": [
+        {
+          "output": "developerPayoutOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "releaseReceiptOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "arbiterBadgeOutput",
+          "outputIndex": 2
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "refundTransaction": {
+      "name": "Milestone Refunded",
+      "description": "Client badge refunded the milestone after the deadline.",
+      "icon": "receive",
+      "inputs": [
+        {
+          "input": "escrowInput",
+          "inputIndex": 0
+        },
+        {
+          "input": "clientBadgeInput",
+          "inputIndex": 1
+        }
+      ],
+      "outputs": [
+        {
+          "output": "clientPayoutOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "refundReceiptOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "clientBadgeOutput",
+          "outputIndex": 2
+        }
+      ],
+      "version": 2,
+      "locktime": "$(<refundDeadline>)",
+      "composable": true
+    },
+    "arbiterRefundTransaction": {
+      "name": "Arbiter Refunded",
+      "description": "Arbiter badge refunded the milestone after the deadline.",
+      "icon": "arbiter",
+      "inputs": [
+        {
+          "input": "escrowInput",
+          "inputIndex": 0
+        },
+        {
+          "input": "arbiterBadgeInput",
+          "inputIndex": 1
+        }
+      ],
+      "outputs": [
+        {
+          "output": "clientPayoutOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "refundReceiptOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "arbiterBadgeOutput",
+          "outputIndex": 2
+        }
+      ],
+      "version": 2,
+      "locktime": "$(<refundDeadline>)",
+      "composable": true
+    },
+    "transferClientBadgeTransaction": {
+      "name": "Client Badge Transferred",
+      "description": "Client badge moved to a recipient locking script.",
+      "icon": "send",
+      "inputs": [
+        {
+          "input": "clientBadgeInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "badgeTransferOutput",
+          "outputIndex": 0
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "transferDeveloperBadgeTransaction": {
+      "name": "Developer Badge Transferred",
+      "description": "Developer badge moved to a recipient locking script.",
+      "icon": "send",
+      "inputs": [
+        {
+          "input": "developerBadgeInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "badgeTransferOutput",
+          "outputIndex": 0
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    },
+    "transferArbiterBadgeTransaction": {
+      "name": "Arbiter Badge Transferred",
+      "description": "Arbiter badge moved to a recipient locking script.",
+      "icon": "send",
+      "inputs": [
+        {
+          "input": "arbiterBadgeInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "badgeTransferOutput",
+          "outputIndex": 0
+        }
+      ],
+      "version": 2,
+      "locktime": 0,
+      "composable": true
+    }
+  },
+  "outputs": {
+    "mintingOutput": {
+      "name": "Minting NFT",
+      "description": "The one-time minting authority. Burned by the lock action.",
+      "icon": "mint",
+      "lockingScript": "clientLockingScript",
+      "valueSatoshis": "$(<mintingSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "minting",
+          "commitment": "00"
+        }
+      }
+    },
+    "escrowLockedOutput": {
+      "name": "Escrow (FUNDED)",
+      "description": "The locked milestone carrying the mutable 0x0000 state NFT.",
+      "icon": "vault",
+      "lockingScript": "escrowLockingScript",
+      "valueSatoshis": "$(<lockedSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "mutable",
+          "commitment": "0000"
+        }
+      }
+    },
+    "escrowSubmittedOutput": {
+      "name": "Escrow (SUBMITTED)",
+      "description": "The continued escrow carrying the mutable 0x0001 state NFT.",
+      "icon": "vault",
+      "lockingScript": "escrowLockingScript",
+      "valueSatoshis": "$(<lockedSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "mutable",
+          "commitment": "0001"
+        }
+      }
+    },
+    "clientBadgeOutput": {
+      "name": "Client badge",
+      "description": "Immutable client role badge, commitment 0x01.",
+      "icon": "badge",
+      "lockingScript": "clientBadgeLockingScript",
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "01"
+        }
+      }
+    },
+    "developerBadgeOutput": {
+      "name": "Developer badge",
+      "description": "Immutable developer role badge, commitment 0x02.",
+      "icon": "badge",
+      "lockingScript": "developerBadgeLockingScript",
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "02"
+        }
+      }
+    },
+    "arbiterBadgeOutput": {
+      "name": "Arbiter badge",
+      "description": "Immutable arbiter role badge, commitment 0x03.",
+      "icon": "badge",
+      "lockingScript": "arbiterBadgeLockingScript",
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "03"
+        }
+      }
+    },
+    "milestoneOutput": {
+      "name": "Milestone hash",
+      "description": "Zero-value OP_RETURN receipt committing the milestone text hash.",
+      "icon": "address",
+      "lockingScript": "milestoneReturnLockingScript",
+      "valueSatoshis": "$(<milestoneSatoshis>)",
+      "token": null
+    },
+    "developerPayoutOutput": {
+      "name": "Developer payout",
+      "description": "The locked amount paid to the developer P2PKH committed at lock.",
+      "icon": "send",
+      "lockingScript": "developerBadgeLockingScript",
+      "valueSatoshis": "$(<lockedSatoshis>)",
+      "token": null
+    },
+    "developerPartialPayoutOutput": {
+      "name": "Developer partial payout",
+      "description": "The payoutNow amount paid to the developer P2PKH committed at lock.",
+      "icon": "send",
+      "lockingScript": "developerBadgeLockingScript",
+      "valueSatoshis": "$(<payoutNow>)",
+      "token": null
+    },
+    "escrowRemainingOutput": {
+      "name": "Escrow (remaining, SUBMITTED)",
+      "description": "The remaining locked amount, carried by the same 0x0001 state NFT.",
+      "icon": "vault",
+      "lockingScript": "escrowLockingScript",
+      "valueSatoshis": "$(<remainingSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "mutable",
+          "commitment": "0001"
+        }
+      }
+    },
+    "clientPayoutOutput": {
+      "name": "Client payout",
+      "description": "The locked amount refunded to the client P2PKH committed at lock.",
+      "icon": "receive",
+      "lockingScript": "clientBadgeLockingScript",
+      "valueSatoshis": "$(<lockedSatoshis>)",
+      "token": null
+    },
+    "releaseReceiptOutput": {
+      "name": "Release receipt",
+      "description": "Immutable 0x0002 receipt NFT sent to the client.",
+      "icon": "badge",
+      "lockingScript": "clientBadgeLockingScript",
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "0002"
+        }
+      }
+    },
+    "refundReceiptOutput": {
+      "name": "Refund receipt",
+      "description": "Immutable 0x0003 receipt NFT sent to the client.",
+      "icon": "badge",
+      "lockingScript": "clientBadgeLockingScript",
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "0003"
+        }
+      }
+    },
+    "badgeTransferOutput": {
+      "name": "Transferred badge",
+      "description": "The same immutable badge sent to the recipient locking script.",
+      "icon": "send",
+      "lockingScript": "$(<recipientLockingScript>)",
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "$(<badgeCommitment>)"
+        }
+      }
+    }
+  },
+  "inputs": {
+    "mintingInput": {
+      "name": "Minting NFT spend",
+      "description": "Spends and burns the minting NFT at lock time.",
+      "icon": "mint",
+      "unlockingScript": "unlockClientP2PKH",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "minting",
+          "commitment": "00"
+        }
+      },
+      "valueSatoshis": "$(<mintingSatoshis>)",
+      "omitChangeAmounts": {
+        "nonfungibleTokens": 1
+      }
+    },
+    "escrowInput": {
+      "name": "Escrow spend",
+      "description": "Spends the state NFT under the P2SH32 milestone covenant.",
+      "icon": "vault",
+      "unlockingScript": "escrowUnlock",
+      "sequenceNumber": 4294967294,
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "mutable",
+          "commitment": "$(<currentStateCommitment>)"
+        }
+      },
+      "valueSatoshis": "$(<lockedSatoshis>)",
+      "omitChangeAmounts": {
+        "satoshis": true
+      }
+    },
+    "escrowPartialInput": {
+      "name": "Escrow spend for partial payout",
+      "description": "Spends the escrow output. Enter its current value as currentEscrowSatoshis; after an earlier partial release this is smaller than lockedSatoshis.",
+      "icon": "vault",
+      "unlockingScript": "escrowUnlock",
+      "sequenceNumber": 4294967294,
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "mutable",
+          "commitment": "$(<currentStateCommitment>)"
+        }
+      },
+      "valueSatoshis": "$(<currentEscrowSatoshis>)",
+      "omitChangeAmounts": {
+        "satoshis": true
+      }
+    },
+    "clientBadgeInput": {
+      "name": "Client badge spend",
+      "description": "Signs with the client badge key.",
+      "icon": "signer",
+      "unlockingScript": "unlockClientBadgeP2PKH",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "01"
+        }
+      },
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "omitChangeAmounts": {
+        "nonfungibleTokens": 1
+      }
+    },
+    "developerBadgeInput": {
+      "name": "Developer badge spend",
+      "description": "Signs with the developer badge key.",
+      "icon": "developer",
+      "unlockingScript": "unlockDeveloperP2PKH",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "02"
+        }
+      },
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "omitChangeAmounts": {
+        "nonfungibleTokens": 1
+      }
+    },
+    "arbiterBadgeInput": {
+      "name": "Arbiter badge spend",
+      "description": "Signs with the arbiter badge key.",
+      "icon": "arbiter",
+      "unlockingScript": "unlockArbiterP2PKH",
+      "token": {
+        "category": "$(<tokenCategory>)",
+        "amount": null,
+        "nft": {
+          "capability": "none",
+          "commitment": "03"
+        }
+      },
+      "valueSatoshis": "$(<badgeSatoshis>)",
+      "omitChangeAmounts": {
+        "nonfungibleTokens": 1
+      }
+    }
+  },
+  "lockingScripts": {
+    "clientLockingScript": {
+      "name": "Client key",
+      "description": "The client funding key. Holds the minting NFT before lock.",
+      "icon": "signer",
+      "lockingType": "p2pkh",
+      "lockingBytecode": "lockClientP2PKH",
+      "unlockingBytecode": "unlockClientP2PKH",
+      "actions": [],
+      "roles": {
+        "client": {
+          "state": {
+            "secrets": [
+              "clientKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "lock",
+              "role": "client",
+              "secrets": [
+                {
+                  "clientKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        }
+      }
+    },
+    "clientBadgeLockingScript": {
+      "name": "Client badge holder",
+      "description": "The P2PKH script that holds the client badge and receives client payouts.",
+      "icon": "signer",
+      "lockingType": "p2pkh",
+      "lockingBytecode": "lockClientBadgeP2PKH",
+      "unlockingBytecode": "unlockClientBadgeP2PKH",
+      "actions": [],
+      "roles": {
+        "client": {
+          "state": {
+            "secrets": [
+              "clientBadgeKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "submit",
+              "role": "client",
+              "secrets": [
+                {
+                  "developerKey": null
+                }
+              ]
+            },
+            {
+              "action": "release",
+              "role": "client",
+              "secrets": [
+                {
+                  "clientBadgeKey": null
+                }
+              ]
+            },
+            {
+              "action": "partialRelease",
+              "role": "client",
+              "secrets": [
+                {
+                  "clientBadgeKey": null
+                }
+              ]
+            },
+            {
+              "action": "refund",
+              "role": "client",
+              "secrets": [
+                {
+                  "clientBadgeKey": null
+                }
+              ]
+            },
+            {
+              "action": "resolveToDeveloper",
+              "role": "client",
+              "secrets": [
+                {
+                  "arbiterKey": null
+                }
+              ]
+            },
+            {
+              "action": "arbiterRefund",
+              "role": "client",
+              "secrets": [
+                {
+                  "arbiterKey": null
+                }
+              ]
+            },
+            {
+              "action": "transferClientBadge",
+              "role": "client",
+              "secrets": [
+                {
+                  "clientBadgeKey": null
+                }
+              ]
+            },
+            {
+              "action": "transferDeveloperBadge",
+              "role": "client",
+              "secrets": [
+                {
+                  "developerKey": null
+                }
+              ]
+            },
+            {
+              "action": "transferArbiterBadge",
+              "role": "client",
+              "secrets": [
+                {
+                  "arbiterKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        }
+      }
+    },
+    "developerBadgeLockingScript": {
+      "name": "Developer badge holder",
+      "description": "The P2PKH script that holds the developer badge and receives the payout.",
+      "icon": "signer",
+      "lockingType": "p2pkh",
+      "lockingBytecode": "lockDeveloperP2PKH",
+      "unlockingBytecode": "unlockDeveloperP2PKH",
+      "actions": [],
+      "roles": {
+        "developer": {
+          "state": {
+            "secrets": [
+              "developerKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "submit",
+              "role": "developer",
+              "secrets": [
+                {
+                  "developerKey": null
+                }
+              ]
+            },
+            {
+              "action": "transferDeveloperBadge",
+              "role": "developer",
+              "secrets": [
+                {
+                  "developerKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        }
+      }
+    },
+    "arbiterBadgeLockingScript": {
+      "name": "Arbiter badge holder",
+      "description": "The P2PKH script that holds the arbiter badge.",
+      "icon": "signer",
+      "lockingType": "p2pkh",
+      "lockingBytecode": "lockArbiterP2PKH",
+      "unlockingBytecode": "unlockArbiterP2PKH",
+      "actions": [],
+      "roles": {
+        "arbiter": {
+          "state": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "resolveToDeveloper",
+              "role": "arbiter",
+              "secrets": [
+                {
+                  "arbiterKey": null
+                }
+              ]
+            },
+            {
+              "action": "arbiterRefund",
+              "role": "arbiter",
+              "secrets": [
+                {
+                  "arbiterKey": null
+                }
+              ]
+            },
+            {
+              "action": "transferArbiterBadge",
+              "role": "arbiter",
+              "secrets": [
+                {
+                  "arbiterKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        }
+      }
+    },
+    "milestoneReturnLockingScript": {
+      "name": "Milestone hash receipt",
+      "description": "Zero-value OP_RETURN output that commits the milestone text hash.",
+      "icon": "address",
+      "lockingType": "p2s",
+      "lockingBytecode": "milestoneReturnScript",
+      "actions": [],
+      "roles": {}
+    },
+    "escrowLockingScript": {
+      "name": "Milestone escrow covenant",
+      "description": "The P2SH32 covenant. The state NFT phase selects the action; role badges authorize each branch.",
+      "icon": "vault",
+      "lockingType": "p2sh",
+      "lockingBytecode": "escrowCovenant",
+      "actions": [],
+      "roles": {
+        "client": {
+          "state": {
+            "secrets": [
+              "clientBadgeKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "submit",
+              "role": "client",
+              "secrets": []
+            },
+            {
+              "action": "release",
+              "role": "client",
+              "secrets": []
+            },
+            {
+              "action": "partialRelease",
+              "role": "client",
+              "secrets": []
+            },
+            {
+              "action": "refund",
+              "role": "client",
+              "secrets": []
+            },
+            {
+              "action": "resolveToDeveloper",
+              "role": "client",
+              "secrets": []
+            },
+            {
+              "action": "arbiterRefund",
+              "role": "client",
+              "secrets": []
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        },
+        "developer": {
+          "state": {
+            "secrets": [
+              "developerKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "submit",
+              "role": "developer",
+              "secrets": []
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        },
+        "arbiter": {
+          "state": {
+            "secrets": [
+              "arbiterKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "resolveToDeveloper",
+              "role": "arbiter",
+              "secrets": []
+            },
+            {
+              "action": "arbiterRefund",
+              "role": "arbiter",
+              "secrets": []
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": true
+          },
+          "selectable": true
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lockClientP2PKH": "OP_DUP OP_HASH160 <$(<clientKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
+    "unlockClientP2PKH": "<clientKey.schnorr_signature.all_outputs> <clientKey.public_key>",
+    "lockClientBadgeP2PKH": "OP_DUP OP_HASH160 <$(<clientBadgeKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
+    "unlockClientBadgeP2PKH": "<clientBadgeKey.schnorr_signature.all_outputs> <clientBadgeKey.public_key>",
+    "lockDeveloperP2PKH": "OP_DUP OP_HASH160 <$(<developerKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
+    "unlockDeveloperP2PKH": "<developerKey.schnorr_signature.all_outputs> <developerKey.public_key>",
+    "lockArbiterP2PKH": "OP_DUP OP_HASH160 <$(<arbiterKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
+    "unlockArbiterP2PKH": "<arbiterKey.schnorr_signature.all_outputs> <arbiterKey.public_key>",
+    "escrowUnlock": "OP_1",
+    "milestoneReturnScript": "OP_RETURN <$(<milestoneHash>)>",
+    "escrowCovenant": "\n  \n  OP_DROP\n\n  <0> OP_UTXOTOKENCOMMITMENT\n  OP_SIZE <2> OP_EQUALVERIFY\n  <1> OP_SPLIT OP_SWAP OP_BIN2NUM <0> OP_NUMEQUALVERIFY OP_BIN2NUM\n  <0> OP_UTXOTOKENCATEGORY OP_SIZE <33> OP_EQUALVERIFY OP_DROP\n\n  <0> OP_OUTPUTTOKENCOMMITMENT\n  OP_SIZE <2> OP_EQUAL\n\n  OP_IF\n    \n  OP_DROP\n\n  <0> OP_OUTPUTTOKENCOMMITMENT\n  OP_SIZE <2> OP_EQUALVERIFY\n  <1> OP_SPLIT OP_SWAP OP_BIN2NUM <0> OP_NUMEQUALVERIFY OP_BIN2NUM\n\n  <0> OP_OUTPUTTOKENCATEGORY <0> OP_UTXOTOKENCATEGORY OP_EQUALVERIFY\n  <0> OP_OUTPUTBYTECODE <0> OP_UTXOBYTECODE OP_EQUALVERIFY\n  <0> OP_OUTPUTVALUE <0> OP_UTXOVALUE OP_NUMEQUALVERIFY\n\n  \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <1> OP_UTXOTOKENCATEGORY OP_EQUALVERIFY\n  \n  \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <1> OP_OUTPUTTOKENCATEGORY OP_EQUALVERIFY\n  \n  <1> OP_UTXOTOKENCOMMITMENT <0x02> OP_EQUALVERIFY\n  <1> OP_OUTPUTTOKENCOMMITMENT <0x02> OP_EQUALVERIFY\n\n  OP_SWAP\n  OP_0 OP_NUMEQUALVERIFY\n  OP_1 OP_NUMEQUALVERIFY\n\n  OP_ELSE\n    \n  OP_DROP\n\n  <1> OP_OUTPUTTOKENCOMMITMENT\n  OP_SIZE <2> OP_EQUALVERIFY\n  <1> OP_SPLIT OP_SWAP OP_BIN2NUM <0> OP_NUMEQUALVERIFY OP_BIN2NUM\n\n  OP_SWAP\n  OP_TOALTSTACK\n\n  OP_DUP <1> OP_NUMEQUAL\n  OP_IF\n    OP_1 OP_NUMEQUALVERIFY\n\n    <1> OP_OUTPUTTOKENCATEGORY <0> OP_UTXOTOKENCATEGORY OP_EQUALVERIFY\n    <0> OP_OUTPUTTOKENCATEGORY OP_SIZE <0> OP_EQUALVERIFY OP_DROP\n\n    <0> OP_OUTPUTVALUE\n    <1> OP_OUTPUTVALUE\n    OP_ADD\n    <0> OP_UTXOVALUE OP_NUMEQUALVERIFY\n\n    OP_FROMALTSTACK\n    <1> OP_NUMEQUALVERIFY\n\n    <0> OP_OUTPUTBYTECODE \n  <0x76a914>\n  <$(<developerKey.public_key> OP_HASH160)>\n  <0x88ac>\n  OP_CAT OP_CAT\n OP_EQUALVERIFY\n\n    <1> OP_UTXOTOKENCOMMITMENT <0x01> OP_EQUALVERIFY\n  OP_ELSE\n    \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <1> OP_OUTPUTTOKENCATEGORY OP_EQUALVERIFY\n  \n    <1> OP_OUTPUTVALUE <1000> OP_NUMEQUALVERIFY\n\n    <0> OP_OUTPUTTOKENCATEGORY OP_SIZE <0> OP_EQUALVERIFY OP_DROP\n    <0> OP_OUTPUTVALUE <0> OP_UTXOVALUE OP_NUMEQUALVERIFY\n\n    OP_DUP <2> OP_NUMEQUAL\n    OP_IF\n      OP_2 OP_NUMEQUALVERIFY\n      OP_FROMALTSTACK\n      <1> OP_NUMEQUALVERIFY\n\n      <0> OP_OUTPUTBYTECODE \n  <0x76a914>\n  <$(<developerKey.public_key> OP_HASH160)>\n  <0x88ac>\n  OP_CAT OP_CAT\n OP_EQUALVERIFY\n      <1> OP_OUTPUTBYTECODE \n  <0x76a914>\n  <$(<clientBadgeKey.public_key> OP_HASH160)>\n  <0x88ac>\n  OP_CAT OP_CAT\n OP_EQUALVERIFY\n\n      \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <1> OP_UTXOTOKENCATEGORY OP_EQUALVERIFY\n  \n      \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <2> OP_OUTPUTTOKENCATEGORY OP_EQUALVERIFY\n  \n      \n    <1> OP_UTXOTOKENCOMMITMENT\n    OP_DUP <0x01> OP_EQUAL\n    OP_SWAP <0x03> OP_EQUAL\n    OP_BOOLOR OP_VERIFY\n  \n      \n  <2> OP_OUTPUTTOKENCOMMITMENT\n  <1> OP_UTXOTOKENCOMMITMENT\n  OP_EQUALVERIFY\n\n    OP_ELSE\n      OP_DUP <3> OP_NUMEQUAL\n      OP_IF\n        OP_3 OP_NUMEQUALVERIFY\n        OP_FROMALTSTACK\n        OP_DUP <0> OP_NUMEQUAL\n        OP_SWAP <1> OP_NUMEQUAL\n        OP_BOOLOR OP_VERIFY\n\n        <0> OP_OUTPUTBYTECODE \n  <0x76a914>\n  <$(<clientBadgeKey.public_key> OP_HASH160)>\n  <0x88ac>\n  OP_CAT OP_CAT\n OP_EQUALVERIFY\n        <1> OP_OUTPUTBYTECODE \n  <0x76a914>\n  <$(<clientBadgeKey.public_key> OP_HASH160)>\n  <0x88ac>\n  OP_CAT OP_CAT\n OP_EQUALVERIFY\n\n        \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <1> OP_UTXOTOKENCATEGORY OP_EQUALVERIFY\n  \n        \n    <0> OP_UTXOTOKENCATEGORY <32> OP_SPLIT OP_DROP\n    <2> OP_OUTPUTTOKENCATEGORY OP_EQUALVERIFY\n  \n        \n    <1> OP_UTXOTOKENCOMMITMENT\n    OP_DUP <0x01> OP_EQUAL\n    OP_SWAP <0x03> OP_EQUAL\n    OP_BOOLOR OP_VERIFY\n  \n        \n  <2> OP_OUTPUTTOKENCOMMITMENT\n  <1> OP_UTXOTOKENCOMMITMENT\n  OP_EQUALVERIFY\n\n\n        <$(<refundDeadline>)> OP_CHECKLOCKTIMEVERIFY OP_DROP\n      OP_ELSE\n        OP_0 OP_VERIFY\n      OP_ENDIF\n    OP_ENDIF\n  OP_ENDIF\n\n  OP_ENDIF\n  OP_1\n"
+  },
+  "constants": {
+    "dustLimit": {
+      "name": "Dust Limit",
+      "description": "Minimum satoshis for a token-bearing output.",
+      "type": "integer",
+      "value": 1000
+    },
+    "mintingSatoshis": {
+      "name": "Minting NFT Value",
+      "description": "Satoshis carried by the one-time minting NFT.",
+      "type": "integer",
+      "value": 1000
+    },
+    "badgeSatoshis": {
+      "name": "Badge Value",
+      "description": "Satoshis carried by each role badge and each state receipt.",
+      "type": "integer",
+      "value": 1000
+    },
+    "milestoneSatoshis": {
+      "name": "Milestone Receipt Value",
+      "description": "Zero-value OP_RETURN milestone receipt.",
+      "type": "integer",
+      "value": 0
+    }
+  },
+  "variables": {
+    "clientKey": {
+      "name": "Client Key",
+      "description": "Funding key generated at mint. Holds the minting NFT before lock.",
+      "type": "private_key"
+    },
+    "clientBadgeKey": {
+      "name": "Client Badge Key",
+      "description": "Client role badge key and committed client payout key.",
+      "type": "private_key"
+    },
+    "developerKey": {
+      "name": "Developer Key",
+      "description": "Developer role badge key and committed developer payout key.",
+      "type": "private_key"
+    },
+    "arbiterKey": {
+      "name": "Arbiter Key",
+      "description": "Arbiter role badge key.",
+      "type": "private_key"
+    },
+    "tokenCategory": {
+      "name": "Token Category",
+      "description": "The CashToken category shared by the state NFT and all badges. At mint it must equal the txid of a funding UTXO at output index 0.",
+      "type": "token_category"
+    },
+    "lockedSatoshis": {
+      "name": "Locked Amount",
+      "description": "The milestone amount locked in the escrow output.",
+      "type": "satoshis"
+    },
+    "refundDeadline": {
+      "name": "Refund Deadline",
+      "description": "UNIX timestamp committed in the covenant and enforced by OP_CHECKLOCKTIMEVERIFY on refunds.",
+      "type": "integer"
+    },
+    "milestoneHash": {
+      "name": "Milestone Hash",
+      "description": "Hash of the milestone text committed in the lock OP_RETURN output.",
+      "type": "bytes"
+    },
+    "currentStateCommitment": {
+      "name": "Current State Commitment",
+      "description": "The escrow input phase: 0000 FUNDED, 0001 SUBMITTED. The covenant derives the next state.",
+      "type": "token_commitment"
+    },
+    "currentEscrowSatoshis": {
+      "name": "Current Escrow Satoshis",
+      "description": "The value of the escrow input before this partial release. Use the current escrow value, not the original locked amount after an earlier partial release.",
+      "type": "satoshis"
+    },
+    "payoutNow": {
+      "name": "Payout Now",
+      "description": "Satoshis to pay the developer in this partial release. payoutNow + remainingSatoshis must equal currentEscrowSatoshis.",
+      "type": "satoshis"
+    },
+    "remainingSatoshis": {
+      "name": "Remaining Satoshis",
+      "description": "Satoshis kept in the escrow after this partial release. currentEscrowSatoshis - payoutNow.",
+      "type": "satoshis"
+    },
+    "badgeCommitment": {
+      "name": "Badge Commitment",
+      "description": "The badge commitment to preserve in a transfer: 01, 02, or 03.",
+      "type": "token_commitment"
+    },
+    "recipientLockingScript": {
+      "name": "Recipient Locking Script",
+      "description": "The locking script that receives a transferred badge.",
+      "type": "locking_script"
+    }
+  },
+  "icons": [
+    {
+      "name": "vault",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "signer",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "developer",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "arbiter",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "mint",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "lock",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "badge",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "receive",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "send",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "address",
+      "hash": "0000000000000000000000"
+    }
+  ]
+}

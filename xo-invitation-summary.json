@@ -1,0 +1,105 @@
+{
+  "stage": "final (Stage 2-4 combined)",
+  "network": "chipnet",
+  "templateName": "Final Tokenized Milestone Escrow",
+  "templateIdentifier": "5e40d3c5662384b3d381b6b0eecf1d39b05abdd1cd3eb4b9109403867a48f292",
+  "actionIdentifier": "mint",
+  "invitationIdentifier": "d2c788026af3dce4ac8c27100590c355",
+  "expiresAtTimestamp": 1796529627366,
+  "lockedSatoshis": 1000000,
+  "refundDeadline": 1795618233,
+  "milestoneText": "Final milestone: stateful escrow with transferable CashToken role badges.",
+  "milestoneHash": "6096d4f0e23ad920851eada182dd2328",
+  "stateCommitments": {
+    "funded": "0000",
+    "submitted": "0001",
+    "released": "0002",
+    "refunded": "0003"
+  },
+  "badgeCommitments": {
+    "client": "01",
+    "developer": "02",
+    "arbiter": "03"
+  },
+  "phases": {
+    "0": "FUNDED",
+    "1": "SUBMITTED",
+    "2": "RELEASED",
+    "3": "REFUNDED"
+  },
+  "refundDeadlineIso": "2026-11-25T14:50:33.000Z",
+  "fundingRequirement": "The mint funding UTXO must spend output index 0 of its transaction. Set tokenCategory to that outpoint transaction ID. A matching txid at index 1 is not a valid CashTokens genesis category.",
+  "generatedKeys": [
+    "clientKey (funds mint and lock)",
+    "clientBadgeKey (client badge + committed client payout/receipt)",
+    "developerKey (developer badge + committed developer payout)",
+    "arbiterKey (arbiter badge)"
+  ],
+  "covenant": {
+    "redeemScriptBytes": 431,
+    "limitBytes": 520,
+    "operationLimit": 201,
+    "stateCommitment": "0x00 tag | 1 phase byte",
+    "phaseMeanings": {
+      "0000": "FUNDED",
+      "0001": "SUBMITTED",
+      "0002": "RELEASED",
+      "0003": "REFUNDED"
+    },
+    "committedAtLock": [
+      "refundDeadline (OP_CHECKLOCKTIMEVERIFY)",
+      "developer payout P2PKH (from developerKey)",
+      "client payout/receipt P2PKH (from clientBadgeKey)"
+    ]
+  },
+  "lockVariables": {
+    "tokenCategory": "<the 64-hex txid of the index-0 funding UTXO used for mint>",
+    "lockedSatoshis": 1000000,
+    "refundDeadline": 1795618233,
+    "milestoneHash": "6096d4f0e23ad920851eada182dd2328"
+  },
+  "followUpVariables": {
+    "currentStateCommitment": {
+      "funded": "0000",
+      "submitted": "0001"
+    },
+    "badgeCommitment": {
+      "client": "01",
+      "developer": "02",
+      "arbiter": "03"
+    },
+    "partialRelease": {
+      "currentEscrowSatoshis": "<value of the escrow input before this payout>",
+      "payoutNow": "<satoshis to pay now>",
+      "remainingSatoshis": "<currentEscrowSatoshis minus payoutNow>"
+    },
+    "recipientLockingScript": "<locking script hex that receives a transferred badge>"
+  },
+  "actions": [
+    "mint - create the one-time minting NFT",
+    "lock - burn minting NFT, create escrow and badges",
+    "submit - developer badge: FUNDED -> SUBMITTED",
+    "release - client badge: SUBMITTED -> RELEASED, pay developer",
+    "partialRelease - client badge: pay part now, keep rest in escrow",
+    "resolveToDeveloper - arbiter badge: SUBMITTED -> RELEASED, pay developer",
+    "refund - client badge + deadline: FUNDED/SUBMITTED -> REFUNDED",
+    "arbiterRefund - arbiter badge + deadline: FUNDED/SUBMITTED -> REFUNDED",
+    "transferClientBadge / transferDeveloperBadge / transferArbiterBadge"
+  ],
+  "instructions": [
+    "Open this invitation in Blaze on Chipnet and accept it as the client role.",
+    "Fund the wallet with about 0.011 BCH. The funding UTXO must be outpoint index 0.",
+    "Set tokenCategory to that index-0 funding txid and execute mint.",
+    "After mint confirms, select the minting NFT and run lock. Enter lockedSatoshis=1000000, refundDeadline, milestoneHash, and the same tokenCategory.",
+    "The lock transaction creates the escrow output, three distinct badge addresses, and the milestone OP_RETURN.",
+    "Follow-ups are exposed on the escrow UTXO and on each badge UTXO in Blaze.",
+    "All follow-ups are also available to the client role in this single-wallet demo.",
+    "For partialRelease enter currentEscrowSatoshis, payoutNow, and remainingSatoshis so that payoutNow + remainingSatoshis = currentEscrowSatoshis.",
+    "Export RAW executed invitations from Blaze (Save/Copy invitation), not the display JSON with placeholders."
+  ],
+  "note": "Open mint invitation only. The user-written 500-word developer feedback is a separate submission artifact.",
+  "files": {
+    "template": "xo-template.json",
+    "invitation": "xo-invitation.json"
+  }
+}
