@@ -69,17 +69,3 @@ submit
 partialRelease
 release
 ```
-
-Debug/inspector screenshots can also be added there.
-
-Use `Copy Invitation` / **Raw Extended JSON**, not the human-readable preview.
-
-## Not for submission
-
-Everything not listed above was moved to:
-
-```text
-NON_SUBMISSION_ARCHIVE/
-```
-
-Do not send that folder.
